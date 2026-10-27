@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>مار و پله</title>
+<style>
+body{font-family:system-ui,Tahoma,sans-serif;margin:0;padding:12px;background:#f4f1ea;color:#222;text-align:center}
+#wrap{max-width:420px;margin:auto}
+input,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #bbb;margin:4px;width:80%}
+button{background:#2a7;color:#fff;border:0;cursor:pointer}button:disabled{background:#999}
+canvas{width:100%;border:2px solid #333;border-radius:6px;background:#fff}
+#status{font-weight:bold;margin:8px 0;min-height:24px}#log{color:#555;min-height:20px;font-size:14px}
+#game{display:none}
+</style></head><body><div id="wrap">
+<h2>🐍 مار و پله 🪜</h2>
+<div id="lobby">
+  <input id="name" placeholder="اسم تو">
+  <input id="room" placeholder="کد اتاق (مثلاً ali123)">
+  <button onclick="join()">ورود به بازی</button>
+</div>
+<div id="game">
+  <div id="status"></div>
+  <canvas id="c" width="400" height="400"></canvas>
+  <div id="log"></div>
+  <button id="roll" onclick="post('roll')">🎲 تاس بنداز</button>
+  <button id="again" onclick="post('restart')" style="display:none">بازی دوباره</button>
+  <div id="share" style="font-size:12px;color:#666"></div>
+</div>
+</div>
+<script>
+const J={4:14,9:31,21:42,28:84,36:44,51:67,71:91,16:6,47:26,49:11,56:53,62:19,64:60,87:24,93:73,95:75,98:78};
+const COL=['#1e66f5','#f57c00'];
+let pid=sessionStorage.pid||'',room='',S=null;
+const q=new URLSearchParams(location.search);
+document.getElementById('room').value=q.get('room')||'';
+document.getElementById('name').value=localStorage.name||'';
+
+function join(){
+  const name=document.getElementById('name').value.trim()||'بازیکن';
+  room=document.getElementById('room').value.trim();
+  if(!room)return alert('کد اتاق را بنویس');
+  localStorage.name=name;
+  const es=new EventSource(`/events?room=${encodeURIComponent(room)}&name=${encodeURIComponent(name)}&pid=${pid}`);
+  es.addEventListener('hello',e=>{pid=JSON.parse(e.data).pid;sessionStorage.pid=pid});
+  es.addEventListener('full',()=>{es.close();alert('این اتاق پر است')});
+  es.onmessage=e=>{S=JSON.parse(e.data);render()};
+  lobby.style.display='none';game.style.display='block';
+  share.textContent='لینک دعوت: '+location.origin+'/?room='+encodeURIComponent(room);
+}
+function post(a){fetch(`/${a}?room=${encodeURIComponent(room)}&pid=${pid}`,{method:'POST'})}
+
+function cell(n){ // مرکز خانه n روی بوم
+  const i=n-1,r=Math.floor(i/10);let c=i%10;if(r%2)c=9-c;
+  return [c*40+20,(9-r)*40+20];
+}
+function draw(){
+  const g=c.getContext('2d');g.clearRect(0,0,400,400);g.font='11px sans-serif';g.textAlign='center';
+  for(let n=1;n<=100;n++){
+    const [x,y]=cell(n);g.fillStyle=(Math.floor((n-1)/10)+n)%2?'#f6e7b4':'#e3f1d4';
+    g.fillRect(x-20,y-20,40,40);g.fillStyle='#777';g.fillText(n,x-11,y-8);
+  }
+  for(const a in J){
+    const [x1,y1]=cell(+a),[x2,y2]=cell(J[a]);
+    g.strokeStyle=J[a]>a?'#2a8a2a':'#d33';g.lineWidth=J[a]>a?5:4;g.globalAlpha=.7;
+    g.beginPath();g.moveTo(x1,y1);g.lineTo(x2,y2);g.stroke();
+    g.fillStyle=g.strokeStyle;g.beginPath();g.arc(x2,y2,5,0,7);g.fill();g.globalAlpha=1;
+  }
+  S&&S.players.forEach((p,i)=>{
+    if(!p.pos)return;const [x,y]=cell(p.pos);
+    g.fillStyle=COL[i];g.beginPath();g.arc(x+(i?7:-7),y+6,10,0,7);g.fill();
+    g.strokeStyle='#fff';g.lineWidth=2;g.stroke();
+  });
+}
+function render(){
+  const P=S.players;let t;
+  if(P.length<2)t='منتظر بازیکن دوم... لینک را بفرست';
+  else if(S.winner!==null)t='🏆 برنده: '+P[S.winner].name+(S.winner===S.you?' (تو!)':'');
+  else t=S.turn===S.you?'نوبت توئه!':'نوبت '+P[S.turn].name;
+  status.textContent=t;
+  status.style.color=COL[S.turn]||'#222';
+  const L=S.last;
+  log.textContent=L?`${P[L.player].name} عدد ${L.dice} آورد: ${L.from} ← ${L.to}`+(L.kind==='ladder'?' 🪜':L.kind==='snake'?' 🐍':''):'';
+  roll.disabled=!(P.length===2&&S.winner===null&&S.turn===S.you);
+  again.style.display=S.winner!==null?'inline-block':'none';
+  draw();
+}
+draw();
+</script></body></html>
